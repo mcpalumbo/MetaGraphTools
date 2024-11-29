@@ -16,11 +16,8 @@ This Python tool is designed to analyze and visualize metabolic networks by proc
   
 - **SIF and HTML Output**: The reaction graph is saved in SIF (Simple Interaction Format) for further analysis and visualization, and also as an HTML file using `pyvis` to allow interactive graph exploration.
   
-- **Component Analysis**: Computes the **largest connected component** of the metabolic network to focus on the most significant interactions.
-  
 - **Betweenness Centrality Calculation**: Calculates the **normalized betweenness centrality** for each reaction, which quantifies the importance of a reaction in facilitating the flow of metabolites through the network. Reactions with high centrality are often crucial for metabolic regulation and can be key targets for intervention.
   
-- **Gene-Level Analysis**: Centrality calculations are also performed for genes, providing insight into the impact of gene deletions or modifications on network dynamics.
 
 ## Usage
 
