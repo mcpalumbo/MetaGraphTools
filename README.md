@@ -21,6 +21,12 @@ This Python tool is designed to analyze and visualize metabolic networks by proc
 
 ## Usage
 
+To get started, you need to install the following Python libraries:
+
+```bash
+pip install pandas networkx cobra pyvis
+```
+
 To run the tool, use the following command:
 
 ```bash
