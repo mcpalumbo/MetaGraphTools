@@ -278,7 +278,7 @@ def betweenness_centrality(graph, model, output_dir):
     data = []
 
     # Iterate over reactions and their associated genes
-    for reaction_id in betweenness_centrality:
+    for reaction_id in normalized_betweenness_centrality:
         reaction = model.reactions.get_by_id(reaction_id)
         genes = get_locus_tags_for_reaction(model, reaction_id)
         for gene in genes:
@@ -290,7 +290,7 @@ def betweenness_centrality(graph, model, output_dir):
                 'KEGG_id': reaction.annotation.get('kegg.reaction', None),
                 'Rhea_id': reaction.annotation.get('rhea', None),
                 'Biocyc_id': reaction.annotation.get('biocyc', None),
-                'Betweenness_Centrality': betweenness_centrality[reaction_id],
+                'Betweenness_Centrality': normalized_betweenness_centrality[reaction_id],
                 'Degree': node_degrees[reaction_id]
             })
 
