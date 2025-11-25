@@ -270,7 +270,7 @@ def metabolism_to_graph(model, excluded_metabolites, metabolite_reactions):
         graph.add_node(reaction.id)
 
     for reaction in model.reactions:
-        if reaction.lower_bound < 0:
+        if reaction.lower_bound < 0 and reaction.upper_bound > 0:
             products = {met.id for met, coeff in reaction.metabolites.items()}
         else:
             products = {met.id for met, coeff in reaction.metabolites.items() if coeff > 0}
