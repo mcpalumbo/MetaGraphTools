@@ -17,8 +17,9 @@ setup(
             'MetaGraphTools = MetaGraphTools.main:main', 
         ],
     },
+    python_requires='>=3.11,<3.12',
     classifiers=[
-        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.11',
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
     ],

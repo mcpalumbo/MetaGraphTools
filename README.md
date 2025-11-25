@@ -19,13 +19,32 @@ This Python tool is designed to analyze and visualize metabolic networks by proc
 - **Betweenness Centrality Calculation**: Calculates the **normalized betweenness centrality** for each reaction, which quantifies the importance of a reaction in facilitating the flow of metabolites through the network. Reactions with high centrality are often crucial for metabolic regulation and can be key targets for intervention.
   
 
-## Usage
+## Installation
 
-To get started, you need to install the following Python libraries:
+### Using Conda (Recommended)
+
+Create a conda environment with all dependencies:
+
+```bash
+conda create -n metagraphtools -c conda-forge python=3.11 cobra pandas networkx pyvis
+conda activate metagraphtools
+```
+
+Then install MetaGraphTools:
+
+```bash
+pip install git+https://github.com/mcpalumbo/MetaGraphTools.git
+```
+
+### Using pip only
 
 ```bash
 pip install pandas networkx cobra pyvis
 ```
+
+**Note:** Ensure you're using Python 3.11 to avoid compatibility issues with COBRA.
+
+## Usage
 
 To run the tool, use the following command:
 
