@@ -8,6 +8,7 @@ WORKDIR /app
 COPY . /app
 
 # Install the package
+RUN apt-get update && apt-get install -y libexpat1
 RUN pip install --no-cache-dir -e /app
 
 # Create data directory
