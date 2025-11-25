@@ -1,6 +1,5 @@
 import pandas as pd
 import networkx as nx
-import cobra.io
 from cobra.io import read_sbml_model
 from pyvis.network import Network
 from collections import defaultdict
@@ -17,7 +16,7 @@ def get_locus_tags_for_reaction(model, reaction_id):
 
     :returns List of locus tags associated with the reaction.
     """
-    locus_tags = {}
+
     reaction = model.reactions.get_by_id(reaction_id)
 
     # If no genes are associated, set "Unknown"
