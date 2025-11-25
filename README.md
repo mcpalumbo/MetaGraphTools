@@ -21,7 +21,13 @@ This Python tool is designed to analyze and visualize metabolic networks by proc
 
 ## Installation
 
-### Using Conda (Recommended)
+### Using Docker
+
+```bash
+docker pull mcpalumbo/metagraphtools:latest
+```
+
+### Using Conda
 
 Create a conda environment with all dependencies:
 
