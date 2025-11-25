@@ -41,10 +41,15 @@ def total_metabolite_frequency(model, output_file):
         for metabolite in reaction.metabolites:
             frequencies[metabolite.id] += 1
 
-    df_frequencies = pd.DataFrame(
-        list(frequencies.items()), columns=["Metabolite", "Frequency"]
-    )
-    df_frequencies.sort_values(by="Frequency", ascending=False, inplace=True)
+    if not frequencies:
+        print("Warning: No metabolites found in model. Creating empty frequency table.")
+        df_frequencies = pd.DataFrame(columns=["Metabolite", "Frequency"])
+    else:
+        df_frequencies = pd.DataFrame(
+            list(frequencies.items()), columns=["Metabolite", "Frequency"]
+        )
+        df_frequencies.sort_values(by="Frequency", ascending=False, inplace=True)
+    
     df_frequencies.to_csv(output_file, index=False, sep = "\t")
 
     return df_frequencies
@@ -64,7 +69,12 @@ def filter_selected_metabolites(df_frequencies, modified_file = None):
         selected = df_frequencies[df_frequencies["Frequency"] > 20]["Metabolite"].tolist()
     else:
         df_modified = pd.read_csv(modified_file, sep = "\t")
+        if "Metabolite" not in df_modified.columns:
+            raise ValueError(f"Modified file must contain a 'Metabolite' column. Found columns: {df_modified.columns.tolist()}")
         selected = df_modified["Metabolite"].tolist()
+    
+    if not selected:
+        print("Warning: No metabolites selected for filtering.")
 
     return selected
 
@@ -95,8 +105,12 @@ def metabolite_reactant_product_frequency(model, output_file):
                 if reaction.lower_bound < 0:
                     frequencies[metabolite.id]["Reactant"] += 1
 
-    df_metabolites = pd.DataFrame.from_dict(frequencies, orient="index").reset_index()
-    df_metabolites.rename(columns={"index": "Metabolite"}, inplace=True)
+    if not frequencies:
+        print("Warning: No metabolite frequencies found. Creating empty table.")
+        df_metabolites = pd.DataFrame(columns=["Metabolite", "Reactant", "Product"])
+    else:
+        df_metabolites = pd.DataFrame.from_dict(frequencies, orient="index").reset_index()
+        df_metabolites.rename(columns={"index": "Metabolite"}, inplace=True)
 
     df_metabolites.to_csv(output_file, index=False, sep = "\t")
 
@@ -150,6 +164,16 @@ def identify_chokepoint_reactions_from_df(df_metabolites, model, output_dir):
     :returns pd.DataFrame: DataFrame listing chokepoint reactions categorized as production or consumption.
     """
 
+    # Validate input DataFrame
+    if df_metabolites.empty:
+        print("Warning: Empty metabolite DataFrame. No chokepoints can be identified.")
+        return pd.DataFrame(columns=["Reaction", "Name", "Gene", "Consumption_Chokepoint", "Production_Chokepoint"])
+    
+    required_cols = ["Metabolite", "Reactant", "Product"]
+    missing_cols = [col for col in required_cols if col not in df_metabolites.columns]
+    if missing_cols:
+        raise ValueError(f"DataFrame missing required columns: {missing_cols}")
+
     # Filter metabolites that only participate as reactants in a single reaction
     unique_consumers = set(df_metabolites[df_metabolites["Reactant"] == 1]["Metabolite"].tolist())
     # Filter metabolites that only participate as products in a single reaction
@@ -172,7 +196,7 @@ def identify_chokepoint_reactions_from_df(df_metabolites, model, output_dir):
             chokepoint_reactions.append({
                 "Reaction": reaction.id,
                 "Name": reaction.name,
-                "Gene": reaction.genes,
+                "Gene": [gene.id for gene in reaction.genes] if reaction.genes else ["Unknown"],
                 "Consumption_Chokepoint": is_consumption_chokepoint,
                 "Production_Chokepoint": is_production_chokepoint
             })
@@ -201,19 +225,29 @@ def map_genes_to_chokepoints(chokepoint_df, model, output_dir):
     data = []
 
     for _, row in chokepoint_df.iterrows():
-        for locus_tag in row["Gene"]:
-            data.append({
-                "Gene": locus_tag,
-                "Reaction": row["Reaction"],
-                "EC_Number": model.reactions.get_by_id(row["Reaction"]).annotation.get("ec-code", None),
-                "KEGG_id": model.reactions.get_by_id(row["Reaction"]).annotation.get("kegg.reaction", None),
-                "Rhea_id": model.reactions.get_by_id(row["Reaction"]).annotation.get("rhea", None),
-                "Biocyc_id": model.reactions.get_by_id(row["Reaction"]).annotation.get("biocyc", None),
-                "Consumption_Chokepoint": row["Consumption_Chokepoint"],
-                "Production_Chokepoint": row["Production_Chokepoint"]
-            })
+        try:
+            reaction = model.reactions.get_by_id(row["Reaction"])
+            for locus_tag in row["Gene"]:
+                data.append({
+                    "Gene": locus_tag,
+                    "Reaction": row["Reaction"],
+                    "EC_Number": reaction.annotation.get("ec-code", None),
+                    "KEGG_id": reaction.annotation.get("kegg.reaction", None),
+                    "Rhea_id": reaction.annotation.get("rhea", None),
+                    "Biocyc_id": reaction.annotation.get("biocyc", None),
+                    "Consumption_Chokepoint": row["Consumption_Chokepoint"],
+                    "Production_Chokepoint": row["Production_Chokepoint"]
+                })
+        except KeyError:
+            print(f"Warning: Reaction {row['Reaction']} not found in model. Skipping.")
+            continue
 
-    gene_df = pd.DataFrame(data)
+    if not data:
+        print("Warning: No gene data to save for chokepoints.")
+        gene_df = pd.DataFrame(columns=["Gene", "Reaction", "EC_Number", "KEGG_id", "Rhea_id", "Biocyc_id", "Consumption_Chokepoint", "Production_Chokepoint"])
+    else:
+        gene_df = pd.DataFrame(data)
+    
     output_file = os.path.join(output_dir, "chokepoint_genes.tsv")
     gene_df.to_csv(output_file, index=False, sep = "\t")
 
@@ -243,14 +277,17 @@ def metabolism_to_graph(model, excluded_metabolites, metabolite_reactions):
 
         for product in products:
             if product not in excluded_metabolites:
-                reactant_rxn = metabolite_reactions[product]['Reactant']
-                for rxn in reactant_rxn:
-                    if rxn != reaction.id:
-                        graph.add_edge(reaction.id, rxn)
+                if product in metabolite_reactions:
+                    reactant_rxn = metabolite_reactions[product]['Reactant']
+                    for rxn in reactant_rxn:
+                        if rxn != reaction.id:
+                            graph.add_edge(reaction.id, rxn)
+                else:
+                    print(f"Warning: Metabolite {product} not found in metabolite_reactions mapping. Skipping.")
 
     return graph
 
-def betweenness_centrality(graph, model, output_dir):
+def calculate_betweenness_centrality(graph, model, output_dir):
     """
     Calculate the betweenness centrality of reactions in the largest connected component of the metabolic network.
     The betweenness centrality is normalized by the maximum value in the network.
@@ -262,13 +299,35 @@ def betweenness_centrality(graph, model, output_dir):
     :returns Tuple with the largest connected component of the graph and a dictionary with normalized betweenness centrality values.
     """
 
-    largest_component = max(nx.weakly_connected_components(graph), key=len)
+    # Check if the graph is empty or has no nodes
+    if graph.number_of_nodes() == 0:
+        print("Warning: Graph is empty. Cannot calculate betweenness centrality.")
+        return None, {}
+    
+    # Check if there are any weakly connected components
+    components = list(nx.weakly_connected_components(graph))
+    if not components:
+        print("Warning: Graph has no connected components. Cannot calculate betweenness centrality.")
+        return None, {}
+    
+    largest_component = max(components, key=len)
     subgraph = graph.subgraph(largest_component).copy()
+    
+    # Check if the subgraph has at least one node
+    if subgraph.number_of_nodes() == 0:
+        print("Warning: Largest connected component is empty. Cannot calculate betweenness centrality.")
+        return None, {}
 
     # Calculate centrality measures
-    betweenness_centrality = nx.betweenness_centrality(subgraph)
-    max_value = max(value for value in betweenness_centrality.values())
-    normalized_betweenness_centrality = {key: (value / max_value) for key, value in betweenness_centrality.items()}
+    all_betweenness_centrality = nx.betweenness_centrality(subgraph)
+    
+    # Handle case where all centrality values are zero
+    max_value = max(all_betweenness_centrality.values())
+    if max_value == 0:
+        print("Warning: All betweenness centrality values are zero. Using raw values.")
+        normalized_betweenness_centrality = all_betweenness_centrality
+    else:
+        normalized_betweenness_centrality = {key: (value / max_value) for key, value in all_betweenness_centrality.items()}
 
     # Calculate node degrees
     node_degrees = dict(subgraph.degree())
@@ -278,22 +337,30 @@ def betweenness_centrality(graph, model, output_dir):
 
     # Iterate over reactions and their associated genes
     for reaction_id in normalized_betweenness_centrality:
-        reaction = model.reactions.get_by_id(reaction_id)
-        genes = get_locus_tags_for_reaction(model, reaction_id)
-        for gene in genes:
-            # Append a row for each gene associated with the reaction
-            data.append({
-                'Gene': gene,
-                'Reaction': reaction_id,
-                'EC_Number': reaction.annotation.get('ec-code', None),
-                'KEGG_id': reaction.annotation.get('kegg.reaction', None),
-                'Rhea_id': reaction.annotation.get('rhea', None),
-                'Biocyc_id': reaction.annotation.get('biocyc', None),
-                'Betweenness_Centrality': normalized_betweenness_centrality[reaction_id],
-                'Degree': node_degrees[reaction_id]
-            })
+        try:
+            reaction = model.reactions.get_by_id(reaction_id)
+            genes = get_locus_tags_for_reaction(model, reaction_id)
+            for gene in genes:
+                # Append a row for each gene associated with the reaction
+                data.append({
+                    'Gene': gene,
+                    'Reaction': reaction_id,
+                    'EC_Number': reaction.annotation.get('ec-code', None),
+                    'KEGG_id': reaction.annotation.get('kegg.reaction', None),
+                    'Rhea_id': reaction.annotation.get('rhea', None),
+                    'Biocyc_id': reaction.annotation.get('biocyc', None),
+                    'Betweenness_Centrality': normalized_betweenness_centrality[reaction_id],
+                    'Degree': node_degrees[reaction_id]
+                })
+        except KeyError:
+            print(f"Warning: Reaction {reaction_id} not found in model. Skipping.")
+            continue
 
     # Create the DataFrame from the list of dictionaries
+    if not data:
+        print("Warning: No data to save for betweenness centrality.")
+        return subgraph, normalized_betweenness_centrality
+    
     df = pd.DataFrame(data)
 
     # Save the DataFrame to a file
@@ -310,9 +377,12 @@ def write_sif(graph, file_path):
     :param graph: Networkx graph.
     :param file_path: Path to the SIF file.
     """
-    with open(file_path, 'w') as file:
-        for edge in graph.edges():
-            file.write(f"{edge[0]}\tinteracts\t{edge[1]}\n")
+    try:
+        with open(file_path, 'w') as file:
+            for edge in graph.edges():
+                file.write(f"{edge[0]}\tinteracts\t{edge[1]}\n")
+    except IOError as e:
+        print(f"Error writing SIF file {file_path}: {e}")
 
 def write_html(graph, file_path):
     """
@@ -321,9 +391,12 @@ def write_html(graph, file_path):
     :param graph: Networkx graph.
     :param file_path: Path to the HTML file.
     """
-    net = Network()
-    net.from_nx(graph)
-    net.save_graph(file_path)
+    try:
+        net = Network()
+        net.from_nx(graph)
+        net.save_graph(file_path)
+    except Exception as e:
+        print(f"Error writing HTML file {file_path}: {e}")
 
 def print_box_dynamic(messages):
     width = max(len(line) for line in messages) + 4
@@ -360,6 +433,13 @@ def main():
     )
 
     args = parser.parse_args()
+    
+    # Validate arguments
+    if args.frequency_filter_file and not args.graph:
+        parser.error("--frequency_filter_file can only be used with --graph")
+    
+    if not args.chokepoints and not args.graph:
+        parser.error("At least one of --chokepoints or --graph must be specified")
 
     if args.output:
         output_dir = args.output
@@ -367,23 +447,47 @@ def main():
         output_dir = os.getcwd()
     
     if not os.path.exists(output_dir):
-        os.makedirs(output_dir, exist_ok=True)
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+        except OSError as e:
+            print(f"Error: Cannot create output directory {output_dir}: {e}")
+            return
+    
+    if not os.access(output_dir, os.W_OK):
+        print(f"Error: Output directory {output_dir} is not writable.")
+        return
 
     today = datetime.today().strftime('%Y-%m-%d_%H-%M-%S')
     results_dir = os.path.join(output_dir, f"MGT_results_{today}")
-    os.makedirs(results_dir, exist_ok=True)
+    try:
+        os.makedirs(results_dir, exist_ok=True)
+    except OSError as e:
+        print(f"Error: Cannot create results directory {results_dir}: {e}")
+        return
 
     # Load the model
     print("Loading the metabolic model...")
-    model = read_sbml_model(args.model)
+    try:
+        if not os.path.exists(args.model):
+            raise FileNotFoundError(f"Model file not found: {args.model}")
+        model = read_sbml_model(args.model)
+        if len(model.reactions) == 0:
+            raise ValueError("Model has no reactions. Cannot proceed with analysis.")
+        print(f"Model loaded successfully with {len(model.reactions)} reactions and {len(model.metabolites)} metabolites.")
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        return
 
     if args.chokepoints:
         print("Identifying chokepoint reactions...")
         metabolite_reactant_product_file = os.path.join(results_dir, "metabolite_reactant_product.tsv")
         reactant_product_frequencies = metabolite_reactant_product_frequency(model, metabolite_reactant_product_file)
         chokepoints = identify_chokepoint_reactions_from_df(reactant_product_frequencies, model, results_dir)
-        mapped_genes = map_genes_to_chokepoints(chokepoints, model, results_dir)
-        print("Chokepoint files saved.")
+        if not chokepoints.empty:
+            mapped_genes = map_genes_to_chokepoints(chokepoints, model, results_dir)
+            print("Chokepoint files saved.")
+        else:
+            print("No chokepoint reactions found. Skipping gene mapping.")
 
     if args.graph:
 
@@ -397,7 +501,17 @@ def main():
         # Filter selected metabolites if modified_file is provided
         print("Filtering selected metabolites...")
         if args.frequency_filter_file:
-            selected_metabolites = filter_selected_metabolites(metabolite_frequencies, args.frequency_filter_file)
+            if not os.path.exists(args.frequency_filter_file):
+                print(f"Warning: Frequency filter file not found: {args.frequency_filter_file}")
+                print("Using default frequency filter (20 reactions) instead.")
+                selected_metabolites = filter_selected_metabolites(metabolite_frequencies)
+            else:
+                try:
+                    selected_metabolites = filter_selected_metabolites(metabolite_frequencies, args.frequency_filter_file)
+                except Exception as e:
+                    print(f"Error reading frequency filter file: {e}")
+                    print("Using default frequency filter (20 reactions) instead.")
+                    selected_metabolites = filter_selected_metabolites(metabolite_frequencies)
         else:
             selected_metabolites = filter_selected_metabolites(metabolite_frequencies)
             note0 = ["Note:"]
@@ -416,13 +530,17 @@ def main():
         print("Complete metabolic network graph saved.")
 
         print("Calculating betweenness centrality...")
-        subgraph, betweenness = betweenness_centrality(G, model, results_dir)
-
-        # Save the largest connected component of the graph as a visualization or file
-        network_filter_file = os.path.join(results_dir, "metabolic_network_filter")
-        write_sif(subgraph, network_filter_file + ".sif")
-        write_html(subgraph, network_filter_file + ".html")
-        print("Largest component of metabolic network graph filtered and saved.")
+        result = calculate_betweenness_centrality(G, model, results_dir)
+        
+        if result is not None:
+            subgraph, betweenness = result
+            # Save the largest connected component of the graph as a visualization or file
+            network_filter_file = os.path.join(results_dir, "metabolic_network_filter")
+            write_sif(subgraph, network_filter_file + ".sif")
+            write_html(subgraph, network_filter_file + ".html")
+            print("Largest component of metabolic network graph filtered and saved.")
+        else:
+            print("Skipping filtered network output due to empty graph.")
 
 if __name__ == "__main__":
     main()
