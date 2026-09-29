@@ -1,5 +1,7 @@
 # MetaGraphTools
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23021928.svg)](https://doi.org/10.5281/zenodo.23021928)
+
 # Metabolic Model Analyzer
 
 This Python tool is designed to analyze and visualize metabolic networks by processing SBML-format models. It calculates **chokepoint reactions**, constructs a reaction graph, and computes **betweenness centrality** to identify key reactions with high metabolic impact. The analysis helps identify potential metabolic targets with significant implications for metabolic engineering or therapeutic interventions.
